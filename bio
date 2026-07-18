@@ -1,0 +1,169 @@
+import time
+import hmac
+import hashlib
+import requests
+from urllib.parse import urlencode
+from telethon import TelegramClient, events
+
+API_ID = 
+API_HASH = 
+SESSION = 
+
+SIGNAL_ROOM = 
+
+
+client = TelegramClient(SESSION, API_ID, API_HASH)
+
+# =========================
+# 2. 바이낸스 TESTNET 설정
+# =========================
+API_KEY = 
+API_SECRET = 
+
+BASE_URL =
+SYMBOL = "BTCUSDT"
+
+async def main():
+    await client.start()
+
+    me = await client.get_me()
+    print(me)
+
+    print("BOT STARTED")
+    await client.run_until_disconnected()
+
+position = None
+
+# =========================
+# 3. 서명 함수 (바이낸스 표준)
+# =========================
+def sign(params, secret):
+    query_string = urlencode(params)
+    return hmac.new(
+        secret.encode("utf-8"),
+        query_string.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+
+# =========================
+# 4. 주문 함수
+# =========================
+def open_position(side, qty):
+    endpoint = "/fapi/v1/order"
+
+    params = {
+        "symbol": SYMBOL,
+        "side": "BUY" if side == "LONG" else "SELL",
+        "type": "MARKET",
+        "quantity": qty,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    params["signature"] = sign(params, API_SECRET)
+
+    headers = {
+        "X-MBX-APIKEY": API_KEY
+    }
+
+    r = requests.post(
+        BASE_URL + endpoint,
+        params=params,
+        headers=headers
+    )
+
+    print("[OPEN REQUEST]", params)
+    print("[OPEN STATUS]", r.status_code)
+    print("[OPEN RAW]", r.text)
+
+    return r.json()
+
+def close_position(side, qty):
+    endpoint = "/fapi/v1/order"
+
+    params = {
+        "symbol": SYMBOL,
+        "side": "SELL" if side == "LONG" else "BUY",
+        "type": "MARKET",
+        "quantity": qty,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    params["signature"] = sign(params, API_SECRET)
+
+    headers = {
+        "X-MBX-APIKEY": API_KEY
+    }
+
+    r = requests.post(
+        BASE_URL + endpoint,
+        params=params,
+        headers=headers
+    )
+
+    print("[CLOSE RAW]", r.text)
+    return r.json()
+
+# =========================
+# 5. 파서
+# =========================
+def parse(msg):
+    msg = msg.lower()
+
+    if "롱" in msg:
+        return "LONG"
+    if "숏" in msg:
+        return "SHORT"
+    if "정리" in msg or "익절" in msg:
+        return "CLOSE"
+    if "반익" in msg:
+        return "PARTIAL"
+    if "물" in msg:
+        return "ADD"
+
+    return None
+
+# =========================
+# 6. 실행 로직
+# =========================
+def execute(action):
+    global position
+
+    qty = 0.001
+
+    if action in ["LONG", "SHORT"]:
+        open_position(action, qty)
+        position = {"side": action, "qty": qty}
+        print("POSITION:", position)
+
+    elif action == "CLOSE" and position:
+        close_position(position["side"], position["qty"])
+        position = None
+        print("POSITION CLOSED")
+
+# =========================
+# 7. 텔레그램 핸들러
+# =========================
+@client.on(events.NewMessage(chats=SIGNAL_ROOM))
+async def handler(event):
+    msg = event.message.message
+
+    action = parse(msg)
+
+    if not action:
+        return
+
+    print("\n[MSG]", msg)
+    print("[ACTION]", action)
+
+    execute(action)
+
+# =========================
+# 8. 실행
+# =========================
+async def main():
+    await client.start()
+    print("BOT STARTED")
+    await client.run_until_disconnected()
+
+with client:
+    client.loop.run_until_complete(main())
