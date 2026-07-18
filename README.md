@@ -31,7 +31,7 @@ async def handler(event):
     signal = parse_signal(msg)
 
     if signal:
-        print("🔥 시그널 감지:", signal)
+        print(" 시그널 감지:", signal)
     else:
         print("무시:", msg)
 
