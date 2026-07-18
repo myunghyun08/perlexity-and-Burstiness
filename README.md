@@ -24,7 +24,7 @@ def parse_signal(msg):
 
     return None
 
-@client.on(events.NewMessage(chats=TARGET_ROOM))
+client.on(events.NewMessage(chats=TARGET_ROOM))
 async def handler(event):
     msg = event.text
 
